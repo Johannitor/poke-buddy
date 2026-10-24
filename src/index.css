@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0f1115;
+  --color-panel: #171a21;
+  --color-panel-2: #1e222b;
+  --color-line: #2a2f3a;
+  --color-text: #e6e8ee;
+  --color-muted: #8a91a2;
+  --color-accent: #ef5350;
+  --color-gold: #e0b85a;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-bg text-text text-sm antialiased;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  img.pixel {
+    image-rendering: pixelated;
+  }
+  dialog::backdrop {
+    background: rgb(0 0 0 / 0.6);
+  }
+}

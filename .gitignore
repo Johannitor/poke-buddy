@@ -1,0 +1,9 @@
+node_modules
+dist
+
+# Local editor / agent config (contains machine-specific paths)
+.claude/
+
+# OS clutter
+.DS_Store
+Thumbs.db
