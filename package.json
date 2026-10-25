@@ -13,6 +13,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "typecheck": "tsc",
+    "generate:move-data": "node --experimental-strip-types scripts/generate-move-data.ts",
     "preview": "vite preview"
   },
   "dependencies": {

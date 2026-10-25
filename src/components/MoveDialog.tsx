@@ -5,21 +5,34 @@ import type { Move } from "../lib/pokeapi-types";
 import { flavorTextForVg, moveForVg, pretty, shortEffect } from "../lib/pokemon";
 import { CategoryBadge, TypeBadge } from "./Badges";
 
-function MoveDetails({ url, vg }: { url: string; vg: string }) {
-  const state = useAsync(() => getJSON<Move>(url), [url]);
-  if (state.status === "loading") return <p className="text-muted">Loading…</p>;
-  if (state.status === "error") return <p className="text-accent">Couldn't load move ({state.error.message}).</p>;
+/** In-game description and effect text: the only part of a move that needs a request. */
+function MoveTexts({ slug, vg, effectChance }: { slug: string; vg: string; effectChance: number | null }) {
+  const state = useAsync(() => getJSON<Move>(`/move/${slug}/`), [slug]);
+  if (state.status === "loading") return <p className="text-[13px] text-muted">Loading description…</p>;
+  if (state.status === "error") return <p className="text-[13px] text-muted">Couldn't load the description ({state.error.message}).</p>;
 
-  const m = state.data;
-  const d = moveForVg(m, vg);
-  const flavor = flavorTextForVg(m, vg);
-  const effect = shortEffect(m, d.effectChance);
+  const flavor = flavorTextForVg(state.data, vg);
+  const effect = shortEffect(state.data, effectChance);
+  return (
+    <>
+      {flavor && <p className="mb-2.5 italic">{flavor}</p>}
+      {effect && (
+        <p className="text-[13px]">
+          <span className="text-muted">Effect:</span> {effect}
+        </p>
+      )}
+    </>
+  );
+}
+
+function MoveDetails({ slug, vg }: { slug: string; vg: string }) {
+  const d = moveForVg(slug, vg);
   const facts: [string, string | number][] = [
     ["Power", d.powerLabel],
     ["Accuracy", d.accuracy ? `${d.accuracy}%` : "—"],
     ["PP", d.pp ?? "—"],
-    ["Priority", m.priority > 0 ? `+${m.priority}` : m.priority],
-    ["Target", pretty(m.target.name)],
+    ["Priority", d.priority > 0 ? `+${d.priority}` : d.priority],
+    ["Target", d.target ? pretty(d.target) : "—"],
   ];
   if (d.effectChance) facts.push(["Effect chance", `${d.effectChance}%`]);
 
@@ -43,25 +56,20 @@ function MoveDetails({ url, vg }: { url: string; vg: string }) {
           <span className="text-muted">Damage:</span> {d.powerNote}
         </p>
       )}
-      {flavor && <p className="mb-2.5 italic">{flavor}</p>}
-      {effect && (
-        <p className="text-[13px]">
-          <span className="text-muted">Effect:</span> {effect}
-        </p>
-      )}
+      <MoveTexts slug={slug} vg={vg} effectChance={d.effectChance} />
     </>
   );
 }
 
 /** Native modal <dialog>: Esc, the × button and clicking the backdrop all close it. */
-export function MoveDialog({ url, vg, onClose }: { url: string | null; vg: string; onClose: () => void }) {
+export function MoveDialog({ slug, vg, onClose }: { slug: string | null; vg: string; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
     const dlg = ref.current;
-    if (url && dlg && !dlg.open) dlg.showModal();
-    if (!url && dlg?.open) dlg.close();
-  }, [url]);
+    if (slug && dlg && !dlg.open) dlg.showModal();
+    if (!slug && dlg?.open) dlg.close();
+  }, [slug]);
 
   return (
     <dialog
@@ -79,7 +87,7 @@ export function MoveDialog({ url, vg, onClose }: { url: string | null; vg: strin
         >
           ×
         </button>
-        {url && <MoveDetails url={url} vg={vg} />}
+        {slug && <MoveDetails slug={slug} vg={vg} />}
       </div>
     </dialog>
   );
