@@ -30,17 +30,3 @@ export function getJSON<T>(url: string): Promise<T> {
   }
   return p as Promise<T>;
 }
-
-/** Map over items with at most `limit` promises in flight. */
-export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
-  const out = new Array<R>(items.length);
-  let next = 0;
-  async function worker() {
-    while (next < items.length) {
-      const idx = next++;
-      out[idx] = await fn(items[idx], idx);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return out;
-}

@@ -1,12 +1,8 @@
 import { Fragment, useState } from "react";
-import { getJSON, mapLimit } from "../lib/api";
 import { MOVE_TABS } from "../lib/constants";
 import type { LearnMethod } from "../lib/constants";
-import { useAsync } from "../lib/hooks";
-import type { Move, Pokemon } from "../lib/pokeapi-types";
-import {
-  groupByMachine, machineForVg, machineLabel, moveForVg, movesByMethod, movesKnownAt, placeholderMove,
-} from "../lib/pokemon";
+import type { Pokemon } from "../lib/pokeapi-types";
+import { groupByMachine, machineForVg, machineLabel, moveForVg, movesByMethod, movesKnownAt } from "../lib/pokemon";
 import type { LearnedMove, MachineNumber, MoveInfo } from "../lib/pokemon";
 import { CategoryBadge, TypeBadge } from "./Badges";
 import { Card } from "./Card";
@@ -19,12 +15,6 @@ interface MoveRow {
   learned: LearnedMove;
   info: MoveInfo;
   machine: MachineNumber | null;
-}
-
-async function loadRow(learned: LearnedMove, vg: string): Promise<MoveRow> {
-  const move = await getJSON<Move>(learned.url).catch(() => null);
-  const info = move ? moveForVg(move, vg) : placeholderMove(learned.slug);
-  return { learned, info, machine: machineForVg(learned.slug, vg) };
 }
 
 function NumCell({ value }: { value: number | null }) {
@@ -49,7 +39,7 @@ export function Moves({ pokemon, vg, gameLabel, level, note = null, onOpenMove }
   gameLabel: string;
   level: number;
   note?: string | null;
-  onOpenMove: (url: string) => void;
+  onOpenMove: (slug: string) => void;
 }) {
   const groups = movesByMethod(pokemon, vg);
   const [tab, setTab] = useState<LearnMethod>("level-up");
@@ -59,9 +49,14 @@ export function Moves({ pokemon, vg, gameLabel, level, note = null, onOpenMove }
   const showLevel = current === "level-up";
   const showMachine = current === "machine";
 
-  const rows = useAsync(() => mapLimit(list, 12, (lm) => loadRow(lm, vg)), [pokemon.id, vg, current]);
+  // All from the bundled move data, so the table renders without any requests.
+  const rows: MoveRow[] = list.map((learned) => ({
+    learned,
+    info: moveForVg(learned.slug, vg),
+    machine: machineForVg(learned.slug, vg),
+  }));
   // The TM / HM tab is split into HMs and TMs; other tabs are one untitled section.
-  const sections = rows.status !== "done" ? [] : showMachine ? groupByMachine(rows.data) : [{ title: null, rows: rows.data }];
+  const sections = showMachine ? groupByMachine(rows) : [{ title: null, rows }];
   const columnCount = 6 + (showLevel || showMachine ? 1 : 0);
 
   const known = movesKnownAt(groups["level-up"], level);
@@ -91,8 +86,6 @@ export function Moves({ pokemon, vg, gameLabel, level, note = null, onOpenMove }
 
       {!list.length ? (
         <p className="text-muted">No move data for this game.</p>
-      ) : rows.status !== "done" ? (
-        <p className="text-muted">Loading moves…</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse whitespace-nowrap tabular-nums">
@@ -120,7 +113,7 @@ export function Moves({ pokemon, vg, gameLabel, level, note = null, onOpenMove }
                     </tr>
                   )}
                   {section.rows.map(({ learned: lm, info: d, machine }) => (
-                    <tr key={`${lm.slug}-${lm.level}`} onClick={() => onOpenMove(lm.url)} className={`cursor-pointer border-b border-[#20242d] hover:bg-[#1b1f27] ${rowState(lm)}`}>
+                    <tr key={`${lm.slug}-${lm.level}`} onClick={() => onOpenMove(lm.slug)} className={`cursor-pointer border-b border-[#20242d] hover:bg-[#1b1f27] ${rowState(lm)}`}>
                       {showLevel && <td className={`${TD} w-px text-muted`}>{lm.level || "—"}</td>}
                       {showMachine && <td className={`${TD} w-px text-muted`}>{machine ? machineLabel(machine) : "—"}</td>}
                       <td className={`${TD} font-medium`}>{d.name}</td>

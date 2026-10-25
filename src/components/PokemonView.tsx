@@ -145,7 +145,7 @@ export function PokemonView({
       </div>
 
       <StatCalculator stats={statsForGen(pokemon, version.gen)} level={level} />
-      <MoveDialog url={openMove} vg={version.vg} onClose={() => setOpenMove(null)} />
+      <MoveDialog slug={openMove} vg={version.vg} onClose={() => setOpenMove(null)} />
     </>
   );
 }

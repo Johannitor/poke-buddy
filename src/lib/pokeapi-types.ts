@@ -94,21 +94,9 @@ export interface EvolutionChain {
   chain: ChainLink;
 }
 
-export interface MoveValues {
-  accuracy: number | null;
-  power: number | null;
-  pp: number | null;
-  effect_chance: number | null;
-  type: NamedRef | null;
-}
-
-export interface Move extends MoveValues {
+// Only the texts: a move's numbers come from the generated src/data/moves.json.
+export interface Move {
   name: string;
-  names: (Localized & { name: string })[];
-  damage_class: NamedRef | null;
-  priority: number;
-  target: NamedRef;
-  past_values?: (MoveValues & { version_group: NamedRef })[];
   effect_entries: (Localized & { short_effect: string })[];
   flavor_text_entries: (Localized & { flavor_text: string; version_group: NamedRef })[];
 }
