@@ -47,7 +47,7 @@ shows the data for the game you picked, not today's values.
 - **Evolution chain** with the requirement for every step in the selected game, e.g.
   Leafeon evolves at Eterna Forest in Platinum and Pinwheel Forest in Black/White.
   Clicking a stage opens that Pokémon.
-- **Moves** by level-up, TM/HM, egg and tutor, with type, physical/special/status
+- **Moves** by level-up, TM/HM (HMs first, numbered as in the game), egg and tutor, with type, physical/special/status
   category, power, accuracy and PP as they were in that game. In Gen III, a damaging
   move is physical or special depending on its type, as it was before the Gen IV split.
   - Moves without a fixed power show what they actually do: `40 HP` for Dragon Rage,
@@ -97,6 +97,7 @@ Then open <http://localhost:5173>.
 | `npm run build`     | Type-check and build the static site into `dist/`    |
 | `npm run preview`   | Serve the production build locally                   |
 | `npm run typecheck` | Run the TypeScript compiler without emitting files   |
+| `npm run generate:machines` | Regenerate the TM/HM table in `src/data/machines.json` |
 
 ## Tech stack
 
@@ -115,16 +116,22 @@ src/
 ├── main.tsx              # React entry point
 ├── App.tsx               # Layout, routing, species list
 ├── index.css             # Tailwind import and theme colours
+├── data/
+│   └── machines.json     # Generated TM/HM numbers per game (see scripts/)
 ├── lib/
 │   ├── api.ts            # PokéAPI fetching with memory + Cache Storage caching
 │   ├── constants.ts      # Games, type colours, special move-power labels
-│   ├── hooks.ts          # useAsync, hash routing, saved gen/game
+│   ├── hooks.ts          # useAsync
+│   ├── route.ts          # Hash routing, saved gen/game
+│   ├── types.ts          # Shared app types (Version, SpeciesEntry)
 │   ├── pokeapi-types.ts  # Types for the PokéAPI responses we read
 │   └── pokemon.ts        # Generation-correct logic: types, stats, moves,
 │                         # matchups, evolutions, move prediction, stat formula
 └── components/           # Header, SearchBox, PokemonView, TypeMatchups,
                           # Evolution, Moves, MoveDialog, LevelControl,
                           # StatCalculator, Badges (type/category icons), Card
+scripts/
+└── generate-machines.ts  # Builds src/data/machines.json from PokéAPI
 ```
 
 ## How it works
@@ -161,6 +168,15 @@ cached twice:
 To discard the cache (e.g. after changing what's fetched), bump `CACHE_NAME` in
 [`src/lib/api.ts`](src/lib/api.ts). Cache Storage needs a secure context, so it works on
 `https://` and `localhost`. Elsewhere the app silently falls back to the network.
+
+### TM/HM numbers
+
+PokéAPI keeps a move's TM/HM number in a separate `machine` resource for each game, so
+looking them up at runtime would cost one extra request per move. Instead,
+[`scripts/generate-machines.ts`](scripts/generate-machines.ts) fetches them all once with a
+single query to PokéAPI's GraphQL API. It writes them to
+[`src/data/machines.json`](src/data/machines.json), which is committed and bundled with the app
+(about 2 KB gzipped). Re-run `npm run generate:machines` after adding a game to `GENS`.
 
 ## Deployment (GitHub Pages)
 

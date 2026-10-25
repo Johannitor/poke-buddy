@@ -1,17 +1,31 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { getJSON, mapLimit } from "../lib/api";
 import { MOVE_TABS } from "../lib/constants";
 import type { LearnMethod } from "../lib/constants";
 import { useAsync } from "../lib/hooks";
 import type { Move, Pokemon } from "../lib/pokeapi-types";
-import { moveForVg, movesByMethod, movesKnownAt, pretty } from "../lib/pokemon";
-import type { LearnedMove, MoveInfo } from "../lib/pokemon";
+import {
+  groupByMachine, machineForVg, machineLabel, moveForVg, movesByMethod, movesKnownAt, placeholderMove,
+} from "../lib/pokemon";
+import type { LearnedMove, MachineNumber, MoveInfo } from "../lib/pokemon";
 import { CategoryBadge, TypeBadge } from "./Badges";
 import { Card } from "./Card";
 
 const TH = "border-b border-line px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-muted";
 const TD = "px-2 py-[7px]";
 const NUM = "text-right tabular-nums";
+
+interface MoveRow {
+  learned: LearnedMove;
+  info: MoveInfo;
+  machine: MachineNumber | null;
+}
+
+async function loadRow(learned: LearnedMove, vg: string): Promise<MoveRow> {
+  const move = await getJSON<Move>(learned.url).catch(() => null);
+  const info = move ? moveForVg(move, vg) : placeholderMove(learned.slug);
+  return { learned, info, machine: machineForVg(learned.slug, vg) };
+}
 
 function NumCell({ value }: { value: number | null }) {
   return value ? <td className={`${TD} ${NUM}`}>{value}</td> : <td className={`${TD} ${NUM} text-[#565d6c]`}>—</td>;
@@ -42,13 +56,14 @@ export function Moves({ pokemon, vg, gameLabel, level, note = null, onOpenMove }
   // Fall back to the first non-empty tab (e.g. a Pokémon with no egg moves).
   const current = groups[tab].length ? tab : (MOVE_TABS.find((t) => groups[t.method].length)?.method ?? "level-up");
   const list = groups[current];
-
-  const details = useAsync(
-    () => mapLimit(list, 12, (m) => getJSON<Move>(m.url).then((mv) => moveForVg(mv, vg)).catch(() => null)),
-    [pokemon.id, vg, current],
-  );
-
   const showLevel = current === "level-up";
+  const showMachine = current === "machine";
+
+  const rows = useAsync(() => mapLimit(list, 12, (lm) => loadRow(lm, vg)), [pokemon.id, vg, current]);
+  // The TM / HM tab is split into HMs and TMs; other tabs are one untitled section.
+  const sections = rows.status !== "done" ? [] : showMachine ? groupByMachine(rows.data) : [{ title: null, rows: rows.data }];
+  const columnCount = 6 + (showLevel || showMachine ? 1 : 0);
+
   const known = movesKnownAt(groups["level-up"], level);
 
   // Level-up tab only: highlight the predicted moveset, fade moves not learned yet.
@@ -76,7 +91,7 @@ export function Moves({ pokemon, vg, gameLabel, level, note = null, onOpenMove }
 
       {!list.length ? (
         <p className="text-muted">No move data for this game.</p>
-      ) : details.status !== "done" ? (
+      ) : rows.status !== "done" ? (
         <p className="text-muted">Loading moves…</p>
       ) : (
         <div className="overflow-x-auto">
@@ -84,6 +99,7 @@ export function Moves({ pokemon, vg, gameLabel, level, note = null, onOpenMove }
             <thead>
               <tr>
                 {showLevel && <th className={TH}>Lv</th>}
+                {showMachine && <th className={TH}>No.</th>}
                 <th className={TH}>Move</th>
                 <th className={TH}>Type</th>
                 <th className={TH}>Category</th>
@@ -93,27 +109,34 @@ export function Moves({ pokemon, vg, gameLabel, level, note = null, onOpenMove }
               </tr>
             </thead>
             <tbody>
-              {list.map((lm, i) => {
-                const d: MoveInfo = details.data[i] ?? {
-                  name: pretty(lm.slug), type: "unknown", category: "status", power: null,
-                  powerLabel: "—", powerNote: null, accuracy: null, pp: null, effectChance: null,
-                };
-                return (
-                  <tr key={`${lm.slug}-${lm.level}`} onClick={() => onOpenMove(lm.url)} className={`cursor-pointer border-b border-[#20242d] hover:bg-[#1b1f27] ${rowState(lm)}`}>
-                    {showLevel && <td className={`${TD} w-px text-muted`}>{lm.level || "—"}</td>}
-                    <td className={`${TD} font-medium`}>{d.name}</td>
-                    <td className={TD}>
-                      <TypeBadge type={d.type} />
-                    </td>
-                    <td className={TD}>
-                      <CategoryBadge category={d.category} />
-                    </td>
-                    <PowerCell m={d} />
-                    <NumCell value={d.accuracy} />
-                    <NumCell value={d.pp} />
-                  </tr>
-                );
-              })}
+              {sections.map((section) => (
+                <Fragment key={section.title ?? "all"}>
+                  {section.title && (
+                    <tr>
+                      <th colSpan={columnCount} className={`${TH} bg-panel-2 pt-3`}>
+                        {section.title}
+                        <span className="ml-1.5 font-normal opacity-60">{section.rows.length}</span>
+                      </th>
+                    </tr>
+                  )}
+                  {section.rows.map(({ learned: lm, info: d, machine }) => (
+                    <tr key={`${lm.slug}-${lm.level}`} onClick={() => onOpenMove(lm.url)} className={`cursor-pointer border-b border-[#20242d] hover:bg-[#1b1f27] ${rowState(lm)}`}>
+                      {showLevel && <td className={`${TD} w-px text-muted`}>{lm.level || "—"}</td>}
+                      {showMachine && <td className={`${TD} w-px text-muted`}>{machine ? machineLabel(machine) : "—"}</td>}
+                      <td className={`${TD} font-medium`}>{d.name}</td>
+                      <td className={TD}>
+                        <TypeBadge type={d.type} />
+                      </td>
+                      <td className={TD}>
+                        <CategoryBadge category={d.category} />
+                      </td>
+                      <PowerCell m={d} />
+                      <NumCell value={d.accuracy} />
+                      <NumCell value={d.pp} />
+                    </tr>
+                  ))}
+                </Fragment>
+              ))}
             </tbody>
           </table>
         </div>
