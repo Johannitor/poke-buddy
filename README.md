@@ -132,7 +132,7 @@ src/
                           # Evolution, Moves, MoveDialog, LevelControl,
                           # StatCalculator, Badges (type/category icons), Card
 scripts/
-└── generate-move-data.ts # Builds src/data/*.json from PokéAPI
+└── generate-move-data.ts # Builds src/data/*.json from PokéAPI's CSV data
 ```
 
 ## How it works
@@ -174,8 +174,9 @@ To discard the cache (e.g. after changing what's fetched), bump `CACHE_NAME` in
 
 A Pokémon's learnset only links to its moves. Fetching every move for the moves table would cost
 one request per move (30–100+ per Pokémon), and a TM/HM number would need yet another request.
-Instead, [`scripts/generate-move-data.ts`](scripts/generate-move-data.ts) gets everything the
-table needs in a single query to PokéAPI's GraphQL API, and writes two files:
+Instead, [`scripts/generate-move-data.ts`](scripts/generate-move-data.ts) builds everything the
+table needs from the [CSV files PokéAPI itself is built from](https://github.com/PokeAPI/pokeapi/tree/master/data/v2/csv),
+pinned to one upstream commit (`POKEAPI_COMMIT`) so regenerating is reproducible. It writes two files:
 
 - [`src/data/moves.json`](src/data/moves.json): name, type, category, power, accuracy, PP,
   priority and target for every move up to Gen VI, plus the values that changed between games.
@@ -185,7 +186,7 @@ table needs in a single query to PokéAPI's GraphQL API, and writes two files:
 Both are committed and bundled with the app (about 14 KB gzipped together), so the moves table
 renders without any requests. Only a move's in-game description and effect text are still
 fetched, when its dialog is opened. Re-run `npm run generate:move-data` after adding a game to
-`GENS`.
+`GENS`, or after bumping `POKEAPI_COMMIT` to pick up upstream data fixes.
 
 ## Deployment (GitHub Pages)
 

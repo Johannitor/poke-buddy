@@ -2,117 +2,138 @@
 // no per-move requests:
 //   src/data/moves.json     the table's columns for every move up to the newest supported gen
 //   src/data/machines.json  which TM/HM teaches each move in every supported game
-// The games are frozen, so this only needs re-running when a game is added to
-// GENS. Run with `npm run generate:move-data`.
+// Reads the CSV files PokéAPI itself is built from, pinned to one upstream
+// commit so regenerating is reproducible. Re-run after adding a game to GENS
+// (or after bumping POKEAPI_COMMIT) with `npm run generate:move-data`.
 import { writeFile } from "node:fs/promises";
 import { GEN_LIST, VG_RANK } from "../src/lib/constants.ts";
 import type { MoveData } from "../src/lib/pokemon.ts";
 
-const ENDPOINT = "https://graphql.pokeapi.co/v1beta2";
+// https://github.com/PokeAPI/pokeapi/tree/<commit>/data/v2/csv
+const POKEAPI_COMMIT = "2bf639e5572812a67d2b94903fdcb9d095f5aeb2";
+const ENGLISH = "9"; // languages.csv id of "en"
+const FIRST_HM = 101; // machines.csv numbers HMs from 101 (= HM01)
 
-const QUERY = `query ($vgs: [String!], $maxGen: Int!) {
-  machine(where: { versiongroup: { name: { _in: $vgs } } }) {
-    item { name }
-    move { name }
-    versiongroup { name }
+type Row = Record<string, string>;
+
+/** Minimal RFC 4180 parser: quoted fields may contain commas, quotes ("") and newlines. */
+function parseCsv(text: string): Row[] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+  const endField = () => {
+    row.push(field);
+    field = "";
+  };
+  const endRow = () => {
+    endField();
+    rows.push(row);
+    row = [];
+  };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c !== '"') field += c;
+      else if (text[i + 1] === '"') field += text[++i]; // "" is an escaped quote
+      else quoted = false;
+    } else if (c === '"') quoted = true;
+    else if (c === ",") endField();
+    else if (c === "\n") endRow();
+    else if (c !== "\r") field += c;
   }
-  move(where: { generation_id: { _lte: $maxGen }, id: { _lt: 10000 } }, order_by: { id: asc }) {
-    name power accuracy pp priority move_effect_chance
-    type { name }
-    movedamageclass { name }
-    movetarget { name }
-    movenames(where: { language: { name: { _eq: "en" } } }) { name }
-    movechanges(order_by: { version_group_id: asc }) {
-      version_group_id power accuracy pp move_effect_chance
-      type { name }
-    }
-  }
-}`;
-
-type Named = { name: string } | null;
-
-interface MachineRow {
-  item: { name: string }; // "hm01", "tm24"
-  move: { name: string };
-  versiongroup: { name: string };
+  if (field || row.length) endRow();
+  const [header, ...body] = rows;
+  return body.map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? ""])));
 }
 
-interface MoveValuesRow {
-  power: number | null;
-  accuracy: number | null;
-  pp: number | null;
-  move_effect_chance: number | null;
-  type: Named;
+async function loadCsv(name: string): Promise<Row[]> {
+  const url = `https://raw.githubusercontent.com/PokeAPI/pokeapi/${POKEAPI_COMMIT}/data/v2/csv/${name}.csv`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${res.status} for ${url}`);
+  return parseCsv(await res.text());
 }
 
-interface MoveRow extends MoveValuesRow {
-  name: string;
-  priority: number;
-  movedamageclass: Named;
-  movetarget: Named;
-  movenames: { name: string }[];
-  movechanges: (MoveValuesRow & { version_group_id: number })[];
-}
+const [moveRows, changelog, machineRows, moveNames, versionGroups, types, damageClasses, targets] = await Promise.all(
+  ["moves", "move_changelog", "machines", "move_names", "version_groups", "types", "move_damage_classes", "move_targets"]
+    .map(loadCsv),
+);
 
-const vgs = Object.keys(VG_RANK).sort();
-const res = await fetch(ENDPOINT, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ query: QUERY, variables: { vgs, maxGen: Math.max(...GEN_LIST) } }),
-});
-if (!res.ok) throw new Error(`${res.status} from ${ENDPOINT}`);
-const { data, errors } = await res.json();
-if (errors) throw new Error(JSON.stringify(errors));
+/** id → identifier lookup for one of the small reference tables. */
+const identifiers = (rows: Row[]) => new Map(rows.map((r) => [r.id, r.identifier]));
+const typeName = identifiers(types);
+const damageClassName = identifiers(damageClasses);
+const targetName = identifiers(targets);
+const vgName = identifiers(versionGroups);
+const moveSlug = identifiers(moveRows);
+const englishName = new Map(moveNames.filter((r) => r.local_language_id === ENGLISH).map((r) => [r.move_id, r.name]));
+
+/** Empty CSV cells are nulls. */
+const num = (cell: string) => (cell === "" ? null : Number(cell));
 
 // ---------- machines.json: { [versionGroup]: { [moveSlug]: "hm03" } } ----------
 
-// HMs first, then TMs, each by number, so the JSON reads like the in-game list.
-const machineOrder = (item: string) => (item.startsWith("hm") ? 0 : 1000) + Number(item.slice(2));
+const machineItem = (n: number) =>
+  n >= FIRST_HM ? `hm${String(n - FIRST_HM + 1).padStart(2, "0")}` : `tm${String(n).padStart(2, "0")}`;
 
+const vgs = Object.keys(VG_RANK).sort();
 const machines: Record<string, Record<string, string>> = Object.fromEntries(vgs.map((vg) => [vg, {}]));
-const machineRows = (data.machine as MachineRow[]).sort((a, b) => machineOrder(a.item.name) - machineOrder(b.item.name));
-for (const { item, move, versiongroup } of machineRows) machines[versiongroup.name][move.name] = item.name;
+// HMs first, then TMs, each by number, so the JSON reads like the in-game list.
+const machineOrder = (n: number) => (n >= FIRST_HM ? n - 1000 : n);
+const supported = machineRows
+  .filter((r) => vgName.get(r.version_group_id)! in machines)
+  .sort((a, b) => machineOrder(Number(a.machine_number)) - machineOrder(Number(b.machine_number)));
+for (const r of supported) machines[vgName.get(r.version_group_id)!][moveSlug.get(r.move_id)!] = machineItem(Number(r.machine_number));
 
 for (const vg of vgs) {
   const count = Object.keys(machines[vg]).length;
-  if (!count) throw new Error(`No machines returned for ${vg}`);
+  if (!count) throw new Error(`No machines found for ${vg}`);
   console.log(`${vg}: ${count} machines`);
 }
 
 // ---------- moves.json: { [moveSlug]: MoveData } ----------
 
+const maxGen = Math.max(...GEN_LIST);
 // A change at or before the oldest supported game never applies to it, so it's dropped.
 const oldestRank = Math.min(...Object.values(VG_RANK));
 
-function toMoveData(m: MoveRow): MoveData {
-  const past = m.movechanges
-    .filter((c) => c.version_group_id > oldestRank)
-    .map((c) => {
-      // Only the fields that changed; null means "same as later".
-      const entry: NonNullable<MoveData["past"]>[number] = { vg: c.version_group_id };
-      if (c.type) entry.type = c.type.name;
-      if (c.power !== null) entry.power = c.power;
-      if (c.accuracy !== null) entry.accuracy = c.accuracy;
-      if (c.pp !== null) entry.pp = c.pp;
-      if (c.move_effect_chance !== null) entry.effectChance = c.move_effect_chance;
-      return entry;
-    });
+const changesByMove = new Map<string, Row[]>();
+for (const c of changelog
+  .filter((c) => Number(c.changed_in_version_group_id) > oldestRank)
+  .sort((a, b) => Number(a.changed_in_version_group_id) - Number(b.changed_in_version_group_id))) {
+  changesByMove.set(c.move_id, [...(changesByMove.get(c.move_id) ?? []), c]);
+}
+
+function toMoveData(m: Row): MoveData {
+  const past = (changesByMove.get(m.id) ?? []).map((c) => {
+    // Only the fields that changed; an empty cell means "same as later".
+    const entry: NonNullable<MoveData["past"]>[number] = { vg: Number(c.changed_in_version_group_id) };
+    if (c.type_id) entry.type = typeName.get(c.type_id);
+    if (c.power) entry.power = Number(c.power);
+    if (c.accuracy) entry.accuracy = Number(c.accuracy);
+    if (c.pp) entry.pp = Number(c.pp);
+    if (c.effect_chance) entry.effectChance = Number(c.effect_chance);
+    return entry;
+  });
   return {
-    name: m.movenames[0]?.name ?? m.name,
-    type: m.type?.name ?? "unknown",
-    category: m.movedamageclass?.name ?? "status",
-    power: m.power,
-    accuracy: m.accuracy,
-    pp: m.pp,
-    priority: m.priority,
-    target: m.movetarget?.name ?? "",
-    effectChance: m.move_effect_chance,
+    name: englishName.get(m.id) ?? m.identifier,
+    type: typeName.get(m.type_id) ?? "unknown",
+    category: damageClassName.get(m.damage_class_id) ?? "status",
+    power: num(m.power),
+    accuracy: num(m.accuracy),
+    pp: num(m.pp),
+    priority: Number(m.priority),
+    target: targetName.get(m.target_id) ?? "",
+    effectChance: num(m.effect_chance),
     ...(past.length ? { past } : {}),
   };
 }
 
-const moves = (data.move as MoveRow[]).map((m) => [m.name, toMoveData(m)] as const);
-if (moves.length < 600) throw new Error(`Only ${moves.length} moves returned`);
+const moves = moveRows
+  .filter((m) => Number(m.generation_id) <= maxGen && Number(m.id) < 10000) // 10000+ are Colosseum/XD shadow moves
+  .sort((a, b) => Number(a.id) - Number(b.id))
+  .map((m) => [m.identifier, toMoveData(m)] as const);
+if (moves.length < 600) throw new Error(`Only ${moves.length} moves found`);
 console.log(`${moves.length} moves`);
 
 // ---------- write ----------
@@ -121,4 +142,4 @@ const write = (file: string, text: string) => writeFile(new URL(`../src/data/${f
 await write("machines.json", JSON.stringify(machines, null, 2) + "\n");
 // One move per line keeps the file compact and its diffs readable.
 await write("moves.json", `{\n${moves.map(([slug, m]) => `  ${JSON.stringify(slug)}: ${JSON.stringify(m)}`).join(",\n")}\n}\n`);
-console.log("Wrote src/data/machines.json and src/data/moves.json");
+console.log(`Wrote src/data/machines.json and src/data/moves.json from PokeAPI/pokeapi@${POKEAPI_COMMIT.slice(0, 10)}`);
