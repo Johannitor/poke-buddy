@@ -49,11 +49,15 @@ export function PokemonView({
   version,
   form,
   onForm,
+  favorite,
+  onToggleFavorite,
 }: {
   entry: SpeciesEntry;
   version: Version;
   form: string | null;
   onForm: (form: string | null) => void;
+  favorite: boolean;
+  onToggleFavorite: () => void;
 }) {
   const state = useAsync(() => loadPokemon(entry.id), [entry.id]);
   const [level, setLevel] = useState(50);
@@ -99,7 +103,18 @@ export function PokemonView({
               </div>
               <div className="min-w-0">
                 <div className="tabular-nums text-muted">{dexNo(species.id)}</div>
-                <h1 className="text-2xl font-bold leading-tight">{name}</h1>
+                <h1 className="flex items-center gap-2 text-2xl font-bold leading-tight">
+                  {name}
+                  <button
+                    onClick={onToggleFavorite}
+                    aria-pressed={favorite}
+                    aria-label={favorite ? "Unfavorite" : "Favorite"}
+                    title={favorite ? "Unfavorite" : "Favorite"}
+                    className={`cursor-pointer text-xl leading-none ${favorite ? "text-[#f5c542]" : "text-muted hover:text-text"}`}
+                  >
+                    {favorite ? "★" : "☆"}
+                  </button>
+                </h1>
                 <div className="mb-2 text-[13px] text-muted">
                   {genus}
                   {battleOnly && <> · {current.form?.is_mega ? "Mega Evolution, " : ""}battle only</>}
