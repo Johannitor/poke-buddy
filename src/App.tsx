@@ -1,12 +1,14 @@
 import { getJSON } from "./lib/api";
 import { GENS } from "./lib/constants";
 import type { Gen } from "./lib/constants";
+import { useFavorites } from "./lib/favorites";
 import { useAsync } from "./lib/hooks";
 import type { PokemonSpeciesList } from "./lib/pokeapi-types";
 import { idFromUrl, pretty } from "./lib/pokemon";
 import { useHashRoute } from "./lib/route";
 import type { SpeciesEntry } from "./lib/types";
 import { Message } from "./components/Card";
+import { FavoritesBar } from "./components/FavoritesBar";
 import { Header } from "./components/Header";
 import { PokemonView } from "./components/PokemonView";
 
@@ -21,6 +23,7 @@ async function loadSpecies(gen: Gen): Promise<SpeciesEntry[]> {
 
 export default function App() {
   const [route, navigate] = useHashRoute();
+  const favorites = useFavorites();
   const species = useAsync(() => loadSpecies(route.gen), [route.gen]);
   const list = species.status === "done" ? species.data : [];
 
@@ -36,6 +39,8 @@ export default function App() {
         version={{ gen: route.gen, vg: route.vg }}
         form={route.form ?? null}
         onForm={(form) => navigate({ ...route, form })}
+        favorite={favorites.has(entry.slug)}
+        onToggleFavorite={() => favorites.toggle(entry)}
       />
     ) : (
       <Message>
@@ -47,7 +52,10 @@ export default function App() {
   return (
     <div className="flex min-h-screen flex-col">
       <Header route={route} species={list} navigate={navigate} />
-      <main className="mx-auto w-full max-w-[1200px] flex-1 p-5">{content}</main>
+      <main className="mx-auto w-full max-w-[1200px] flex-1 p-5">
+        <FavoritesBar favorites={favorites} route={route} />
+        {content}
+      </main>
       <footer className="mx-auto max-w-3xl space-y-1.5 px-4 pb-6 pt-4 text-center text-xs text-muted">
         <p>
           All data comes from{" "}

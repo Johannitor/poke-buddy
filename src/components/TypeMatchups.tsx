@@ -8,11 +8,11 @@ import { TypeBadge } from "./Badges";
 import { Card } from "./Card";
 
 const COLUMNS = [
-  { mult: 4, label: "4×", cls: "bg-[#f07067]/20 text-[#ffb4ae]" },
-  { mult: 2, label: "2×", cls: "bg-[#f07067]/20 text-[#ffb4ae]" },
-  { mult: 1, label: "1×", cls: "text-[#565d6c]" },
-  { mult: 0.5, label: "½×", cls: "bg-[#6fcf7a]/20 text-[#a8e6ae]" },
   { mult: 0.25, label: "¼×", cls: "bg-[#6fcf7a]/20 text-[#a8e6ae]" },
+  { mult: 0.5, label: "½×", cls: "bg-[#6fcf7a]/20 text-[#a8e6ae]" },
+  { mult: 1, label: "1×", cls: "text-[#565d6c]" },
+  { mult: 2, label: "2×", cls: "bg-[#f07067]/20 text-[#ffb4ae]" },
+  { mult: 4, label: "4×", cls: "bg-[#f07067]/20 text-[#ffb4ae]" },
 ];
 
 export function TypeMatchups({ types, gen }: { types: string[]; gen: Gen }) {
